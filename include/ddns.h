@@ -136,6 +136,7 @@ const char *ddns_error_string(ddns_error_t err);
 bool ddns_validate_domain(const char *domain);
 bool ddns_validate_ip(const char *ip, ddns_ip_type_t *type);
 bool ddns_validate_api_key(const char *key);
+bool ddns_is_private_ip(const char *ip);
 
 /* Logging */
 void ddns_log(ddns_context_t *ctx, ddns_log_level_t level,

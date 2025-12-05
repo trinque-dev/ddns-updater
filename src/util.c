@@ -154,6 +154,154 @@ bool ddns_validate_ip(const char *ip, ddns_ip_type_t *type)
 }
 
 /*
+ * Check if an IP address is in a private/reserved range
+ * Returns true if private, false if public
+ *
+ * Private IPv4 ranges (RFC 1918):
+ *   10.0.0.0/8
+ *   172.16.0.0/12
+ *   192.168.0.0/16
+ *
+ * Other reserved IPv4 ranges:
+ *   127.0.0.0/8     (loopback)
+ *   169.254.0.0/16  (link-local)
+ *   100.64.0.0/10   (carrier-grade NAT, RFC 6598)
+ *   192.0.0.0/24    (IETF protocol assignments)
+ *   192.0.2.0/24    (TEST-NET-1)
+ *   198.51.100.0/24 (TEST-NET-2)
+ *   203.0.113.0/24  (TEST-NET-3)
+ *   224.0.0.0/4     (multicast)
+ *   240.0.0.0/4     (reserved)
+ *   255.255.255.255 (broadcast)
+ *
+ * Private IPv6 ranges:
+ *   ::1/128         (loopback)
+ *   fc00::/7        (unique local)
+ *   fe80::/10       (link-local)
+ *   ff00::/8        (multicast)
+ */
+bool ddns_is_private_ip(const char *ip)
+{
+    if (!ip || !*ip) {
+        return false;
+    }
+
+    unsigned char buf[sizeof(struct in6_addr)];
+
+    /* Try IPv4 */
+    if (inet_pton(AF_INET, ip, buf) == 1) {
+        uint32_t addr = ((uint32_t)buf[0] << 24) |
+                        ((uint32_t)buf[1] << 16) |
+                        ((uint32_t)buf[2] << 8) |
+                        (uint32_t)buf[3];
+
+        /* 10.0.0.0/8 */
+        if ((addr & 0xFF000000) == 0x0A000000) {
+            return true;
+        }
+
+        /* 172.16.0.0/12 */
+        if ((addr & 0xFFF00000) == 0xAC100000) {
+            return true;
+        }
+
+        /* 192.168.0.0/16 */
+        if ((addr & 0xFFFF0000) == 0xC0A80000) {
+            return true;
+        }
+
+        /* 127.0.0.0/8 (loopback) */
+        if ((addr & 0xFF000000) == 0x7F000000) {
+            return true;
+        }
+
+        /* 169.254.0.0/16 (link-local) */
+        if ((addr & 0xFFFF0000) == 0xA9FE0000) {
+            return true;
+        }
+
+        /* 100.64.0.0/10 (CGNAT) */
+        if ((addr & 0xFFC00000) == 0x64400000) {
+            return true;
+        }
+
+        /* 192.0.0.0/24 (IETF protocol assignments) */
+        if ((addr & 0xFFFFFF00) == 0xC0000000) {
+            return true;
+        }
+
+        /* 192.0.2.0/24 (TEST-NET-1) */
+        if ((addr & 0xFFFFFF00) == 0xC0000200) {
+            return true;
+        }
+
+        /* 198.51.100.0/24 (TEST-NET-2) */
+        if ((addr & 0xFFFFFF00) == 0xC6336400) {
+            return true;
+        }
+
+        /* 203.0.113.0/24 (TEST-NET-3) */
+        if ((addr & 0xFFFFFF00) == 0xCB007100) {
+            return true;
+        }
+
+        /* 224.0.0.0/4 (multicast) */
+        if ((addr & 0xF0000000) == 0xE0000000) {
+            return true;
+        }
+
+        /* 240.0.0.0/4 (reserved) and 255.255.255.255 */
+        if ((addr & 0xF0000000) == 0xF0000000) {
+            return true;
+        }
+
+        /* 0.0.0.0/8 (this network) */
+        if ((addr & 0xFF000000) == 0x00000000) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /* Try IPv6 */
+    if (inet_pton(AF_INET6, ip, buf) == 1) {
+        /* ::1 (loopback) */
+        static const unsigned char loopback[16] = {
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1
+        };
+        if (memcmp(buf, loopback, 16) == 0) {
+            return true;
+        }
+
+        /* :: (unspecified) */
+        static const unsigned char unspecified[16] = {0};
+        if (memcmp(buf, unspecified, 16) == 0) {
+            return true;
+        }
+
+        /* fc00::/7 (unique local) - first byte is fc or fd */
+        if ((buf[0] & 0xFE) == 0xFC) {
+            return true;
+        }
+
+        /* fe80::/10 (link-local) */
+        if (buf[0] == 0xFE && (buf[1] & 0xC0) == 0x80) {
+            return true;
+        }
+
+        /* ff00::/8 (multicast) */
+        if (buf[0] == 0xFF) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /* Invalid IP - treat as not private (will fail validation elsewhere) */
+    return false;
+}
+
+/*
  * Validate an API key
  * Only allows alphanumeric characters and common separators
  * Returns true if valid, false otherwise

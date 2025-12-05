@@ -41,6 +41,7 @@ static void print_usage(const char *prog)
     fprintf(stderr, "Optional arguments:\n");
     fprintf(stderr, "  -4, --ipv4              Force IPv4 (A record) update\n");
     fprintf(stderr, "  -6, --ipv6              Force IPv6 (AAAA record) update\n");
+    fprintf(stderr, "  -f, --force             Allow private/reserved IP addresses\n");
     fprintf(stderr, "  -c, --current           Show current IP for domain and exit\n");
     fprintf(stderr, "  -n, --dry-run           Show what would be done without making changes\n");
     fprintf(stderr, "  -q, --quiet             Suppress non-error output\n");
@@ -144,6 +145,7 @@ int main(int argc, char *argv[])
     ddns_ip_type_t ip_type = DDNS_IP_AUTO;
     bool show_current = false;
     bool list_backends = false;
+    bool force_private = false;
 
     static struct option long_options[] = {
         {"backend",       required_argument, 0, 'b'},
@@ -151,6 +153,7 @@ int main(int argc, char *argv[])
         {"ip",            required_argument, 0, 'i'},
         {"ipv4",          no_argument,       0, '4'},
         {"ipv6",          no_argument,       0, '6'},
+        {"force",         no_argument,       0, 'f'},
         {"current",       no_argument,       0, 'c'},
         {"dry-run",       no_argument,       0, 'n'},
         {"quiet",         no_argument,       0, 'q'},
@@ -182,7 +185,7 @@ int main(int argc, char *argv[])
     int opt;
     int option_index = 0;
 
-    while ((opt = getopt_long(argc, argv, "b:d:i:46cnqvlhV",
+    while ((opt = getopt_long(argc, argv, "b:d:i:46fcnqvlhV",
                              long_options, &option_index)) != -1) {
         switch (opt) {
         case 'b':
@@ -199,6 +202,9 @@ int main(int argc, char *argv[])
             break;
         case '6':
             ip_type = DDNS_IP_V6;
+            break;
+        case 'f':
+            force_private = true;
             break;
         case 'c':
             show_current = true;
@@ -280,6 +286,16 @@ int main(int argc, char *argv[])
                     "IP address type mismatch: got %s but --%s was specified",
                     detected_type == DDNS_IP_V4 ? "IPv4" : "IPv6",
                     ip_type == DDNS_IP_V4 ? "ipv4" : "ipv6");
+            ret = 1;
+            goto cleanup;
+        }
+
+        /* Check for private/reserved IP addresses */
+        if (ddns_is_private_ip(ip) && !force_private) {
+            ddns_log(&ctx, DDNS_LOG_ERROR,
+                    "Private/reserved IP address not allowed: %s", ip);
+            ddns_log(&ctx, DDNS_LOG_ERROR,
+                    "Use --force to override this check");
             ret = 1;
             goto cleanup;
         }
