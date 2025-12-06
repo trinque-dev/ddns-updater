@@ -20,12 +20,17 @@ CFLAGS += -I$(SRCDIR)/../include
 # Platform-specific adjustments
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Darwin)
-    # macOS: no RELRO support, use Homebrew curl if available
+    # macOS: no RELRO support, use Homebrew curl/cunit if available
     LDFLAGS ?=
     CURL_PREFIX := $(shell brew --prefix curl 2>/dev/null)
     ifneq ($(CURL_PREFIX),)
         CFLAGS += -I$(CURL_PREFIX)/include
         LDFLAGS += -L$(CURL_PREFIX)/lib
+    endif
+    CUNIT_PREFIX := $(shell brew --prefix cunit 2>/dev/null)
+    ifneq ($(CUNIT_PREFIX),)
+        CFLAGS += -I$(CUNIT_PREFIX)/include
+        LDFLAGS += -L$(CUNIT_PREFIX)/lib
     endif
 else
     # Linux: enable security hardening linker flags
@@ -40,13 +45,22 @@ LDLIBS = -lcurl
 SRCDIR = src
 OBJDIR = obj
 BINDIR = bin
+TESTDIR = tests
 
-# Source files
+# Source files (excluding main.c for test builds)
 SRCS = $(wildcard $(SRCDIR)/*.c)
 OBJS = $(patsubst $(SRCDIR)/%.c,$(OBJDIR)/%.o,$(SRCS))
 
-# Target
+# Library objects (everything except main.o, for linking with tests)
+LIB_OBJS = $(filter-out $(OBJDIR)/main.o,$(OBJS))
+
+# Test files
+TEST_SRCS = $(wildcard $(TESTDIR)/*.c)
+TEST_OBJS = $(patsubst $(TESTDIR)/%.c,$(OBJDIR)/test_%.o,$(TEST_SRCS))
+
+# Targets
 TARGET = $(BINDIR)/ddns-updater
+TEST_TARGET = $(BINDIR)/test-runner
 
 # Default target
 .PHONY: all
@@ -66,6 +80,24 @@ $(OBJDIR)/%.o: $(SRCDIR)/%.c | $(OBJDIR)
 # Link
 $(TARGET): $(OBJS) | $(BINDIR)
 	$(CC) $(LDFLAGS) -o $@ $(OBJS) $(LDLIBS)
+
+# Compile test files
+$(OBJDIR)/test_%.o: $(TESTDIR)/%.c | $(OBJDIR)
+	$(CC) $(CFLAGS) -I$(TESTDIR) -c -o $@ $<
+
+# Link test runner
+$(TEST_TARGET): $(LIB_OBJS) $(TEST_OBJS) | $(BINDIR)
+	$(CC) $(LDFLAGS) -o $@ $(LIB_OBJS) $(TEST_OBJS) $(LDLIBS) -lcunit
+
+# Build and run tests
+.PHONY: test
+test: $(TEST_TARGET)
+	@echo "Running tests..."
+	@./$(TEST_TARGET)
+
+# Build tests only
+.PHONY: build-tests
+build-tests: $(TEST_TARGET)
 
 # Debug build
 .PHONY: debug
@@ -129,6 +161,11 @@ clean:
 	rm -rf $(OBJDIR) $(BINDIR)
 	rm -f *.plist  # clang static analyzer output
 
+# Clean and rebuild tests
+.PHONY: clean-tests
+clean-tests:
+	rm -f $(TEST_OBJS) $(TEST_TARGET)
+
 # Help
 .PHONY: help
 help:
@@ -136,6 +173,8 @@ help:
 	@echo ""
 	@echo "Targets:"
 	@echo "  all          Build the project (default)"
+	@echo "  test         Build and run tests"
+	@echo "  build-tests  Build tests without running"
 	@echo "  debug        Build with debug symbols"
 	@echo "  asan         Build with AddressSanitizer"
 	@echo "  ubsan        Build with UndefinedBehaviorSanitizer"
@@ -144,6 +183,7 @@ help:
 	@echo "  install      Install to PREFIX (default: /usr/local)"
 	@echo "  uninstall    Remove installed files"
 	@echo "  clean        Remove build artifacts"
+	@echo "  clean-tests  Remove test artifacts only"
 	@echo "  help         Show this message"
 	@echo ""
 	@echo "Variables:"
