@@ -280,9 +280,9 @@ static ddns_error_t namesilo_update(ddns_backend_t *backend,
     /* Build the update URL */
     char url[DDNS_MAX_URL_LEN];
     int n = snprintf(url, sizeof(url),
-                    "%s/dnsUpdateRecord?version=%s&type=xml&key=%s&domain=%s&rrid=%s&rrhost=%s&rrvalue=%s&rrttl=3600",
+                    "%s/dnsUpdateRecord?version=%s&type=xml&key=%s&domain=%s&rrid=%s&rrhost=%s&rrvalue=%s&rrttl=%u",
                     NAMESILO_API_BASE, NAMESILO_API_VERSION,
-                    backend->api_key, domain, record_id, host, ip);
+                    backend->api_key, domain, record_id, host, ip, ctx->ttl);
 
     if (n < 0 || (size_t)n >= sizeof(url)) {
         ddns_log(ctx, DDNS_LOG_ERROR, "URL too long");

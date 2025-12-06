@@ -42,6 +42,7 @@ static void print_usage(const char *prog)
     fprintf(stderr, "  -4, --ipv4              Force IPv4 (A record) update\n");
     fprintf(stderr, "  -6, --ipv6              Force IPv6 (AAAA record) update\n");
     fprintf(stderr, "  -f, --force             Allow private/reserved IP addresses\n");
+    fprintf(stderr, "  -t, --ttl <seconds>     TTL for DNS record (default: 3600, range: 300-86400)\n");
     fprintf(stderr, "  -c, --current           Show current IP for domain and exit\n");
     fprintf(stderr, "  -n, --dry-run           Show what would be done without making changes\n");
     fprintf(stderr, "  -q, --quiet             Suppress non-error output\n");
@@ -96,6 +97,7 @@ ddns_error_t ddns_init(ddns_context_t *ctx)
     memset(ctx, 0, sizeof(*ctx));
     ctx->log_level = DDNS_LOG_INFO;
     ctx->log_file = stderr;
+    ctx->ttl = DDNS_DEFAULT_TTL;
 
     /* Initialize libcurl */
     CURLcode res = curl_global_init(CURL_GLOBAL_SSL);
@@ -154,6 +156,7 @@ int main(int argc, char *argv[])
         {"ipv4",          no_argument,       0, '4'},
         {"ipv6",          no_argument,       0, '6'},
         {"force",         no_argument,       0, 'f'},
+        {"ttl",           required_argument, 0, 't'},
         {"current",       no_argument,       0, 'c'},
         {"dry-run",       no_argument,       0, 'n'},
         {"quiet",         no_argument,       0, 'q'},
@@ -185,7 +188,7 @@ int main(int argc, char *argv[])
     int opt;
     int option_index = 0;
 
-    while ((opt = getopt_long(argc, argv, "b:d:i:46fcnqvlhV",
+    while ((opt = getopt_long(argc, argv, "b:d:i:46ft:cnqvlhV",
                              long_options, &option_index)) != -1) {
         switch (opt) {
         case 'b':
@@ -205,6 +208,19 @@ int main(int argc, char *argv[])
             break;
         case 'f':
             force_private = true;
+            break;
+        case 't':
+            {
+                char *endptr;
+                long ttl_val = strtol(optarg, &endptr, 10);
+                if (*endptr != '\0' || ttl_val < DDNS_MIN_TTL || ttl_val > DDNS_MAX_TTL) {
+                    fprintf(stderr, "Error: TTL must be between %d and %d seconds\n",
+                            DDNS_MIN_TTL, DDNS_MAX_TTL);
+                    ret = 1;
+                    goto cleanup;
+                }
+                ctx.ttl = (unsigned int)ttl_val;
+            }
             break;
         case 'c':
             show_current = true;
@@ -332,6 +348,20 @@ int main(int argc, char *argv[])
 
         printf("%s\n", current_ip);
     } else {
+        /* Check if update is needed by comparing with current IP */
+        if (ctx.backend->ops->get_current && !ctx.dry_run) {
+            char current_ip[DDNS_MAX_IP_LEN + 1];
+            ddns_error_t check_err = ctx.backend->ops->get_current(
+                ctx.backend, domain, NULL, current_ip, sizeof(current_ip));
+
+            if (check_err == DDNS_OK && strcmp(current_ip, ip) == 0) {
+                ddns_log(&ctx, DDNS_LOG_INFO,
+                        "IP already set to %s, skipping update", ip);
+                goto cleanup;
+            }
+            /* If check failed, proceed with update anyway */
+        }
+
         /* Perform the update */
         err = ddns_update(&ctx, domain, NULL, ip, ip_type);
         if (err != DDNS_OK) {

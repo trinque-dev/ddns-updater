@@ -118,7 +118,24 @@ ddns_error_t ddns_http_get(ddns_context_t *ctx, const char *url,
     /* Disable signal handlers (thread safety) */
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
 
-    ddns_log(ctx, DDNS_LOG_DEBUG, "HTTP GET: %s", url);
+    /* Log URL with sensitive parameters redacted */
+    {
+        const char *key_param = strstr(url, "key=");
+        if (key_param) {
+            /* Find end of key parameter */
+            const char *key_end = strchr(key_param + 4, '&');
+            size_t prefix_len = (size_t)(key_param + 4 - url);
+            if (key_end) {
+                ddns_log(ctx, DDNS_LOG_DEBUG, "HTTP GET: %.*s[REDACTED]%s",
+                        (int)prefix_len, url, key_end);
+            } else {
+                ddns_log(ctx, DDNS_LOG_DEBUG, "HTTP GET: %.*s[REDACTED]",
+                        (int)prefix_len, url);
+            }
+        } else {
+            ddns_log(ctx, DDNS_LOG_DEBUG, "HTTP GET: %s", url);
+        }
+    }
 
     /* Perform the request */
     res = curl_easy_perform(curl);

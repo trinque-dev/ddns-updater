@@ -106,10 +106,16 @@ typedef struct ddns_backend {
     struct ddns_context *ctx;
 } ddns_backend_t;
 
+/* Default and limits for TTL */
+#define DDNS_DEFAULT_TTL   3600
+#define DDNS_MIN_TTL       300
+#define DDNS_MAX_TTL       86400
+
 /* Main context */
 typedef struct ddns_context {
     ddns_backend_t *backend;
     ddns_log_level_t log_level;
+    unsigned int ttl;
     bool dry_run;
     bool quiet;
     FILE *log_file;
