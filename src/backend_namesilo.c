@@ -165,8 +165,11 @@ static ddns_error_t namesilo_get_record_id(ddns_backend_t *backend,
      * </resource_record>
      */
 
-    /* Build the full hostname we're looking for */
-    char full_host[DDNS_MAX_DOMAIN_LEN + 1];
+    /* Build the full hostname we're looking for.
+     * Buffer sized for worst-case static analysis (host + "." + domain),
+     * though in practice host+domain <= DDNS_MAX_DOMAIN_LEN since both
+     * are derived from the same bounded full_domain input. */
+    char full_host[2 * DDNS_MAX_DOMAIN_LEN + 2];
     if (strcmp(host, "@") == 0) {
         snprintf(full_host, sizeof(full_host), "%s", domain);
     } else {
@@ -372,8 +375,11 @@ static ddns_error_t namesilo_get_current(ddns_backend_t *backend,
         return DDNS_ERR_API_ERROR;
     }
 
-    /* Build the full hostname we're looking for */
-    char full_host[DDNS_MAX_DOMAIN_LEN + 1];
+    /* Build the full hostname we're looking for.
+     * Buffer sized for worst-case static analysis (host + "." + domain),
+     * though in practice host+domain <= DDNS_MAX_DOMAIN_LEN since both
+     * are derived from the same bounded full_domain input. */
+    char full_host[2 * DDNS_MAX_DOMAIN_LEN + 2];
     if (strcmp(host, "@") == 0) {
         snprintf(full_host, sizeof(full_host), "%s", domain);
     } else {
